@@ -20,7 +20,7 @@ const bassStyle = "#f00";
 const wholeStyle = "#0f0";
 
 
-const bassGainVal = 1.5;
+const bassGainVal = 0.8;
 
 var run = false;
 function setup(micStream) {
@@ -144,9 +144,18 @@ function draw() {
 }
 
 
+const audioConstraints = {
+    "audio": {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        latency: 0,
+    }
+};
 function start() {
     if (navigator.mediaDevices) {
-        navigator.mediaDevices.getUserMedia({ "audio": true }).then((stream) => {
+        navigator.mediaDevices.getUserMedia(audioConstraints).then((stream) => {
             const microphone = audioContext.createMediaStreamSource(stream);
             setup(microphone);
             console.log("ok!")

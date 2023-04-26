@@ -1,7 +1,7 @@
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 
 const audioContext = new AudioContext();
-const fftSize = 1024;
+const fftSize = 512;
 const analyserOptions = {
     fftSize: fftSize,
     smoothingTimeConstant: 0.0,
@@ -33,7 +33,7 @@ function setup(micStream) {
     });
 
 
-    const midHpf= new BiquadFilterNode(audioContext,
+    const midHpf = new BiquadFilterNode(audioContext,
         {
             "type": "highpass",
             "frequency": 200, //Hz
@@ -43,7 +43,7 @@ function setup(micStream) {
     const midLpf = new BiquadFilterNode(audioContext,
         {
             "type": "lowpass",
-            "frequency": 3000, //Hz
+            "frequency": 1500, //Hz
             "Q": 1.0,
         });
     const midBandFilter = midHpf.connect(midLpf);
@@ -57,13 +57,13 @@ function setup(micStream) {
     const audioDataLengthMs = midAnalyser.frequencyBinCount / audioContext.sampleRate * 1000;
 
     run = true;
-    console.log("interval", audioDataLengthMs);
+    console.log("calculated analyser sample length", audioDataLengthMs);
     drawLoop();
 };
 
 function drawLoop() {
-        draw()
-        if(run) { requestAnimationFrame(drawLoop); }
+    draw()
+    if (run) { requestAnimationFrame(drawLoop); }
 }
 
 
@@ -103,10 +103,10 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
     // const firstPoint = polarToCanvasCoords(radius * buf[0], 0);
     // ctx.moveTo(firstPoint.x, firstPoint.y);
     ctx.lineCap = "round";
-    for (var index = 0; index < buf.length; index++){
+    for (var index = 0; index < buf.length; index++) {
         const value = buf[index];
         ctx.beginPath();
-        
+
         const startAngle = sliceWidth * index - sliceWidth / 2;
         const endAngle = startAngle + sliceWidth;
 
@@ -122,7 +122,7 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
     }
 }
 
-const blankingFactor =  0.2 * (fftSize/2048.0);
+const blankingFactor = 0.6 * (fftSize / 2048.0);
 
 function draw() {
     midAnalyser.getFloatTimeDomainData(midSpectrumBuf);
@@ -156,9 +156,12 @@ const audioConstraints = {
 function start() {
     if (navigator.mediaDevices) {
         navigator.mediaDevices.getUserMedia(audioConstraints).then((stream) => {
-            const microphone = audioContext.createMediaStreamSource(stream);
-            setup(microphone);
-            console.log("ok!")
+            audioContext.resume().then(() => {
+                const microphone = audioContext.createMediaStreamSource(stream);
+                setup(microphone);
+                console.log("microphone init ok!")
+            }
+            );
         }).catch((err) => {
             console.log("failed to create a media stream source :( ", err)
         });

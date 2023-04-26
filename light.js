@@ -1,7 +1,7 @@
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 
 const audioContext = new AudioContext();
-const fftSize = 512;
+const fftSize = 1024;
 const analyserOptions = {
     fftSize: fftSize,
     smoothingTimeConstant: 0.0,
@@ -20,9 +20,9 @@ const bassStyle = "#f00";
 const wholeStyle = "#0f0";
 
 
-const bassGainVal = 2.0;
+const bassGainVal = 1.5;
 
-
+var run = false;
 function setup(micStream) {
 
 
@@ -56,11 +56,15 @@ function setup(micStream) {
     globalGain.connect(midBandFilter).connect(midAnalyser);
     const audioDataLengthMs = midAnalyser.frequencyBinCount / audioContext.sampleRate * 1000;
 
-    window.setInterval(draw, audioDataLengthMs);
+    run = true;
     console.log("interval", audioDataLengthMs);
-
-    // window.setInterval(() => console.log("FPS: " + fps), 1000);
+    drawLoop();
 };
+
+function drawLoop() {
+        draw()
+        if(run) { requestAnimationFrame(drawLoop); }
+}
 
 
 const midSpectrumBuf = new Float32Array(midAnalyser.frequencyBinCount);
@@ -98,10 +102,11 @@ const centerOffset = 50; //px
 function fakeLedDrawBuffer(ctx, buf, quantize) {
     // const firstPoint = polarToCanvasCoords(radius * buf[0], 0);
     // ctx.moveTo(firstPoint.x, firstPoint.y);
-
-    buf.forEach((value, index, _) => {
+    ctx.lineCap = "round";
+    for (var index = 0; index < buf.length; index++){
+        const value = buf[index];
         ctx.beginPath();
-        ctx.lineCap = "round";
+        
         const startAngle = sliceWidth * index - sliceWidth / 2;
         const endAngle = startAngle + sliceWidth;
 
@@ -114,17 +119,15 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
         ctx.arc(canvas.width / 2, canvas.height / 2, arcRadius, startAngle + gapWidth, endAngle - gapWidth);
         ctx.stroke();
         ctx.closePath();
-    })
+    }
 }
 
-const blankingFactor =  0.7 * (fftSize/2048.0);
+const blankingFactor =  0.2 * (fftSize/2048.0);
 
 function draw() {
     midAnalyser.getFloatTimeDomainData(midSpectrumBuf);
     bassAnalyser.getFloatTimeDomainData(bassSpectrumBuf);
     const ctx = canvasCtx;
-
-
 
     ctx.fillStyle = "#000";
     ctx.globalAlpha = blankingFactor;
@@ -158,5 +161,5 @@ function start() {
 }
 
 canvas.addEventListener("click", start);
-// document.querySelector("input[type=range]").addEventListener("")
+document.querySelector("button").addEventListener("click", start);
 

@@ -1,7 +1,7 @@
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 
 const audioContext = new AudioContext();
-const fftSize = 2048;
+const fftSize = 512;
 const analyserOptions = {
     fftSize: fftSize,
     smoothingTimeConstant: 0.0,
@@ -117,7 +117,7 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
     })
 }
 
-const blankingFactor =  0.5 * (fftSize/2048.0);
+const blankingFactor =  0.7 * (fftSize/2048.0);
 
 function draw() {
     midAnalyser.getFloatTimeDomainData(midSpectrumBuf);
@@ -127,7 +127,7 @@ function draw() {
 
 
     ctx.fillStyle = "#000";
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = blankingFactor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 

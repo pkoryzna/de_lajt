@@ -1,30 +1,55 @@
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 
-const audioContext = new AudioContext();
+// todo make this into config object
 const fftSize = 512;
-const analyserOptions = {
-    fftSize: fftSize,
-    smoothingTimeConstant: 0.0,
-}
+const bassGainVal = 0.8;
+const ledCount = 60;
+const centerOffset = 50; //px
+const blankingFactor = 0.6 * (fftSize / 2048.0);
 
-const midAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO bins etc.
-const bassAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO 
-const bassGainNode = new GainNode(audioContext);
-const globalGain = new GainNode(audioContext);
+const bassStyle = "#f00";
+const midrangeStyle = "#0f0";
+
+
 const canvas = document.querySelector('canvas');
 const canvasCtx = canvas.getContext('2d');
 
 const radius = canvas.height / 2; // px
 
-const bassStyle = "#f00";
-const wholeStyle = "#0f0";
+// less latency = more better
+const audioConstraints = {
+    "audio": {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        latency: 0,
+    }
+};
 
-
-const bassGainVal = 0.8;
-
+// nice globals bro lmao
 var run = false;
+
+var audioContext;
+var midAnalyser;
+var bassAnalyser;
+var midSpectrumBuf;
+var bassSpectrumBuf;
+
 function setup(micStream) {
 
+    const analyserOptions = {
+        fftSize: fftSize,
+        smoothingTimeConstant: 0.0,
+    }
+
+    midAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO bins etc.
+    bassAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO 
+    midSpectrumBuf = new Float32Array(midAnalyser.frequencyBinCount);
+    bassSpectrumBuf = new Float32Array(bassAnalyser.frequencyBinCount);
+
+    const bassGainNode = new GainNode(audioContext);
+    const globalGain = new GainNode(audioContext);
 
     const lpf = new BiquadFilterNode(audioContext, {
         "type": "lowpass",
@@ -67,39 +92,11 @@ function drawLoop() {
 }
 
 
-const midSpectrumBuf = new Float32Array(midAnalyser.frequencyBinCount);
-const bassSpectrumBuf = new Float32Array(bassAnalyser.frequencyBinCount);
-// radians bro
-const sliceWidth = (Math.PI * 2) / midSpectrumBuf.length;
-const gapWidth = sliceWidth * 0.1;
-// const 
-
-// 0,0 transposed to the middle of the canvas
-function polarToCanvasCoords(r, angle) {
-    return {
-        "x": r * Math.cos(angle) + canvas.width / 2,
-        "y": r * Math.sin(angle) + canvas.height / 2
-    }
-}
-
-
-function simpleDrawBuffer(ctx, buf) {
-    ctx.beginPath();
-    const firstPoint = polarToCanvasCoords(radius * buf[0], 0);
-    ctx.moveTo(firstPoint.x, firstPoint.y);
-    buf.forEach((value, index, _) => {
-        const { x, y } = polarToCanvasCoords(Math.abs(radius * value), sliceWidth * index);
-        ctx.lineTo(x, y);
-        // console.log(x,y)
-    });
-    ctx.stroke();
-    ctx.closePath();
-}
-
-const ledCount = 60;
-const centerOffset = 50; //px
 
 function fakeLedDrawBuffer(ctx, buf, quantize) {
+    const sliceWidth = (Math.PI * 2) / buf.length;
+    const gapWidth = sliceWidth * 0.1;
+
     // const firstPoint = polarToCanvasCoords(radius * buf[0], 0);
     // ctx.moveTo(firstPoint.x, firstPoint.y);
     ctx.lineCap = "round";
@@ -122,7 +119,6 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
     }
 }
 
-const blankingFactor = 0.6 * (fftSize / 2048.0);
 
 function draw() {
     midAnalyser.getFloatTimeDomainData(midSpectrumBuf);
@@ -136,7 +132,7 @@ function draw() {
 
     ctx.lineWidth = 5;
     ctx.globalAlpha = 1.0;
-    ctx.strokeStyle = wholeStyle;
+    ctx.strokeStyle = midrangeStyle;
     fakeLedDrawBuffer(ctx, midSpectrumBuf, true);
     ctx.globalAlpha = 0.8;
     ctx.strokeStyle = bassStyle;
@@ -144,18 +140,10 @@ function draw() {
 }
 
 
-const audioConstraints = {
-    "audio": {
-        channelCount: 1,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        latency: 0,
-    }
-};
 function start() {
     if (navigator.mediaDevices) {
         navigator.mediaDevices.getUserMedia(audioConstraints).then((stream) => {
+            audioContext = new AudioContext();
             audioContext.resume().then(() => {
                 const microphone = audioContext.createMediaStreamSource(stream);
                 setup(microphone);

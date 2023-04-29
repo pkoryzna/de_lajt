@@ -4,7 +4,7 @@ const AudioContext = window.AudioContext || window.webkitAudioContext;
 const fftSize = 512;
 const bassGainVal = 0.8;
 const ledCount = 60;
-const centerOffset = 50; //px
+const centerSize = 0.1; //percent of the radius
 const blankingFactor = 0.6 * (fftSize / 2048.0);
 
 const bassStyle = "#f00";
@@ -14,7 +14,6 @@ const midrangeStyle = "#0f0";
 const canvas = document.querySelector('canvas');
 const canvasCtx = canvas.getContext('2d');
 
-const radius = canvas.height / 2; // px
 
 // less latency = more better
 const audioConstraints = {
@@ -29,14 +28,14 @@ const audioConstraints = {
 
 // nice globals bro lmao
 var run = false;
-
+var radius = Math.min(canvas.height, canvas.width) / 2; // px
 var audioContext;
 var midAnalyser;
 var bassAnalyser;
 var midSpectrumBuf;
 var bassSpectrumBuf;
 
-function setup(micStream) {
+function setupAudioGraph(micStream) {
 
     const analyserOptions = {
         fftSize: fftSize,
@@ -54,7 +53,7 @@ function setup(micStream) {
     const lpf = new BiquadFilterNode(audioContext, {
         "type": "lowpass",
         "frequency": 100, // Hz
-        "Q": 10.0,
+        "Q": 5.0,
     });
 
 
@@ -83,11 +82,12 @@ function setup(micStream) {
 
     run = true;
     console.log("calculated analyser sample length", audioDataLengthMs);
-    drawLoop();
 };
 
 function drawLoop() {
-    draw()
+    midAnalyser.getFloatTimeDomainData(midSpectrumBuf);
+    bassAnalyser.getFloatTimeDomainData(bassSpectrumBuf);
+    draw(midSpectrumBuf, bassSpectrumBuf);
     if (run) { requestAnimationFrame(drawLoop); }
 }
 
@@ -103,10 +103,10 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
     for (var index = 0; index < buf.length; index++) {
         const value = buf[index];
         ctx.beginPath();
-
+        radius = Math.min(canvas.height, canvas.width) / 2; // px
         const startAngle = sliceWidth * index - sliceWidth / 2;
         const endAngle = startAngle + sliceWidth;
-
+        const centerOffset = radius * centerSize;
         const outerWidth = radius - centerOffset;
 
         const arcRadius = (quantize ?
@@ -120,9 +120,7 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
 }
 
 
-function draw() {
-    midAnalyser.getFloatTimeDomainData(midSpectrumBuf);
-    bassAnalyser.getFloatTimeDomainData(bassSpectrumBuf);
+function draw(midBuf, bassBuf) {
     const ctx = canvasCtx;
 
     ctx.fillStyle = "#000";
@@ -130,24 +128,26 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
 
-    ctx.lineWidth = 5;
+    ctx.lineWidth = radius * 0.009;
     ctx.globalAlpha = 1.0;
     ctx.strokeStyle = midrangeStyle;
-    fakeLedDrawBuffer(ctx, midSpectrumBuf, true);
+    fakeLedDrawBuffer(ctx, midBuf, true);
     ctx.globalAlpha = 0.8;
     ctx.strokeStyle = bassStyle;
-    fakeLedDrawBuffer(ctx, bassSpectrumBuf, true);
+    fakeLedDrawBuffer(ctx, bassBuf, true);
 }
 
 
-function start() {
+function startCapturing() {
     if (navigator.mediaDevices) {
         navigator.mediaDevices.getUserMedia(audioConstraints).then((stream) => {
             audioContext = new AudioContext();
             audioContext.resume().then(() => {
                 const microphone = audioContext.createMediaStreamSource(stream);
-                setup(microphone);
+                setupAudioGraph(microphone);
                 console.log("microphone init ok!")
+                run = true;
+                drawLoop();
             }
             );
         }).catch((err) => {
@@ -157,9 +157,44 @@ function start() {
         window.alert("no media devices, it won't work, sorry")
     }
 
-    canvas.removeEventListener("click", start)
+    canvas.removeEventListener("click", startCapturing)
 }
 
-canvas.addEventListener("click", start);
-document.querySelector("button").addEventListener("click", start);
+function toggleFullScreen() {
+    if (!document.fullscreenElement) {
+        canvas.requestFullscreen();
+    } else if (document.exitFullscreen) {
+        document.exitFullscreen();
+    }
+}
 
+
+function fillDemoBuffer(buf, offset = 0, scale = 1.0) {
+    let millis = new Date().valueOf();
+    for (let i = 0; i < fftSize * 2; i++) {
+        buf[i] = Math.sin(millis + i / 10 + offset) * scale;
+    }
+}
+
+const bufA = new Float32Array(fftSize * 2);
+const bufB = new Float32Array(fftSize * 2);
+function attractMode() {
+    if (!run) {
+        fillDemoBuffer(bufA);
+        fillDemoBuffer(bufB, offset = Math.PI, scale = 0.3);
+        draw(bufA, bufB);
+        requestAnimationFrame(attractMode);
+    }
+}
+
+
+const resizeObserver = new ResizeObserver(() => {
+    canvas.width = Math.round(canvas.clientWidth * devicePixelRatio);
+    canvas.height = Math.round(canvas.clientHeight * devicePixelRatio);
+});
+
+resizeObserver.observe(canvas);
+attractMode();
+
+canvas.addEventListener("click", startCapturing);
+canvas.addEventListener("dblclick", toggleFullScreen);

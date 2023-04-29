@@ -41,7 +41,7 @@ function setupAudioGraph(micStream) {
         fftSize: fftSize,
         smoothingTimeConstant: 0.0,
     }
-
+    // TODO remove this, use AudioWorklet instead to push raw samples out, no fft needed here
     midAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO bins etc.
     bassAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO 
     midSpectrumBuf = new Float32Array(midAnalyser.frequencyBinCount);

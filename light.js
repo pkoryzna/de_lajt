@@ -1,11 +1,15 @@
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 
 // todo make this into config object
-const fftSize = 512;
+const samplesPerFullCircle = 2048;
 const bassGainVal = 0.8;
 const ledCount = 60;
 const centerSize = 0.1; //percent of the radius
-const blankingFactor = 0.6 * (fftSize / 2048.0);
+const blankingFactor = 0.1 / (2048.0 / samplesPerFullCircle);
+
+const sliceWidth = (Math.PI * 2) / samplesPerFullCircle;
+const gapWidth = sliceWidth * 0.1;
+
 
 const bassStyle = "#f00";
 const midrangeStyle = "#0f0";
@@ -29,24 +33,20 @@ const audioConstraints = {
 // nice globals bro lmao
 var run = false;
 var radius = Math.min(canvas.height, canvas.width) / 2; // px
+var samplesDrawn = 0;
+
+/** @type {AudioContext} */
 var audioContext;
-var midAnalyser;
-var bassAnalyser;
+
+var bassBufferNode;
+var midBufferNode;
 var midSpectrumBuf;
 var bassSpectrumBuf;
 
 function setupAudioGraph(micStream) {
 
-    const analyserOptions = {
-        fftSize: fftSize,
-        smoothingTimeConstant: 0.0,
-    }
-    // TODO remove this, use AudioWorklet instead to push raw samples out, no fft needed here
-    midAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO bins etc.
-    bassAnalyser = new AnalyserNode(audioContext, analyserOptions); // TODO 
-    midSpectrumBuf = new Float32Array(midAnalyser.frequencyBinCount);
-    bassSpectrumBuf = new Float32Array(bassAnalyser.frequencyBinCount);
-
+    bassBufferNode = new AudioWorkletNode(audioContext, "audio-level-worklet");
+    midBufferNode = new AudioWorkletNode(audioContext, "audio-level-worklet");
     const bassGainNode = new GainNode(audioContext);
     const globalGain = new GainNode(audioContext);
 
@@ -60,7 +60,7 @@ function setupAudioGraph(micStream) {
     const midHpf = new BiquadFilterNode(audioContext,
         {
             "type": "highpass",
-            "frequency": 200, //Hz
+            "frequency": 400, //Hz
             "Q": 1.0,
         });
 
@@ -76,52 +76,84 @@ function setupAudioGraph(micStream) {
     globalGain.gain.setValueAtTime(8.0, audioContext.currentTime);
 
     bassGainNode.gain.setValueAtTime(bassGainVal, audioContext.currentTime);
-    globalGain.connect(lpf).connect(bassGainNode).connect(bassAnalyser);
-    globalGain.connect(midBandFilter).connect(midAnalyser);
-    const audioDataLengthMs = midAnalyser.frequencyBinCount / audioContext.sampleRate * 1000;
+
+    globalGain.connect(lpf).connect(bassGainNode).connect(bassBufferNode);
+    globalGain.connect(midBandFilter).connect(midBufferNode);
+
+    setupReceive();
 
     run = true;
-    console.log("calculated analyser sample length", audioDataLengthMs);
+
 };
 
+// Set up receiving Float32Array buffers from the worklet
+function setupReceive() {
+    bassBufferNode.port.onmessage = (e) => {
+        if (e.data instanceof Float32Array) {
+            bassSpectrumBuf = e.data;
+        } else {
+            console.log("wtf? not a Float32Array received", e.data);
+        }
+    }
+
+    midBufferNode.port.onmessage = (e) => {
+        if (e.data instanceof Float32Array) {
+            midSpectrumBuf = e.data;
+        } else {
+            console.log("wtf? not a Float32Array received", e.data);
+        }
+    }
+}
+
 function drawLoop() {
-    midAnalyser.getFloatTimeDomainData(midSpectrumBuf);
-    bassAnalyser.getFloatTimeDomainData(bassSpectrumBuf);
-    draw(midSpectrumBuf, bassSpectrumBuf);
+
+    if (midSpectrumBuf && bassSpectrumBuf) {
+        draw(midSpectrumBuf, bassSpectrumBuf);
+        if (midSpectrumBuf.length != bassSpectrumBuf.length) {
+            console.warn("buffer size mismatch", midSpectrumBuf.length, bassSpectrumBuf.length);
+        }
+    }
+
+    bassBufferNode.port.postMessage("read");
+    midBufferNode.port.postMessage("read");
+
     if (run) { requestAnimationFrame(drawLoop); }
 }
 
 
 
 function fakeLedDrawBuffer(ctx, buf, quantize) {
-    const sliceWidth = (Math.PI * 2) / buf.length;
-    const gapWidth = sliceWidth * 0.1;
-
-    // const firstPoint = polarToCanvasCoords(radius * buf[0], 0);
-    // ctx.moveTo(firstPoint.x, firstPoint.y);
     ctx.lineCap = "round";
-    for (var index = 0; index < buf.length; index++) {
-        const value = buf[index];
+    // todo fix samplesDrawn 
+    for (var sampleIdx = 0; sampleIdx < buf.length; sampleIdx++) {
+        const normalizedValue = buf[sampleIdx];
         ctx.beginPath();
         radius = Math.min(canvas.height, canvas.width) / 2; // px
-        const startAngle = sliceWidth * index - sliceWidth / 2;
+
+        const startAngle = sliceWidth * samplesDrawn - sliceWidth / 2;
+
         const endAngle = startAngle + sliceWidth;
+
         const centerOffset = radius * centerSize;
         const outerWidth = radius - centerOffset;
 
         const arcRadius = (quantize ?
-            Math.round(Math.abs(value * ledCount)) * (outerWidth / ledCount) :
-            Math.abs(outerWidth * value)) + centerOffset;
+            Math.round(Math.abs(normalizedValue * ledCount)) * (outerWidth / ledCount) :
+            Math.abs(outerWidth * normalizedValue)) + centerOffset;
 
         ctx.arc(canvas.width / 2, canvas.height / 2, arcRadius, startAngle + gapWidth, endAngle - gapWidth);
         ctx.stroke();
         ctx.closePath();
+        
+        samplesDrawn++;
+        samplesDrawn %= samplesPerFullCircle;
     }
 }
 
 
 function draw(midBuf, bassBuf) {
     const ctx = canvasCtx;
+    const quantize = true;
 
     ctx.fillStyle = "#000";
     ctx.globalAlpha = blankingFactor;
@@ -131,10 +163,10 @@ function draw(midBuf, bassBuf) {
     ctx.lineWidth = radius * 0.009;
     ctx.globalAlpha = 1.0;
     ctx.strokeStyle = midrangeStyle;
-    fakeLedDrawBuffer(ctx, midBuf, true);
+    fakeLedDrawBuffer(ctx, midBuf, quantize);
     ctx.globalAlpha = 0.8;
     ctx.strokeStyle = bassStyle;
-    fakeLedDrawBuffer(ctx, bassBuf, true);
+    fakeLedDrawBuffer(ctx, bassBuf, quantize);
 }
 
 
@@ -142,7 +174,7 @@ function startCapturing() {
     if (navigator.mediaDevices) {
         navigator.mediaDevices.getUserMedia(audioConstraints).then((stream) => {
             audioContext = new AudioContext();
-            audioContext.resume().then(() => {
+            audioContext.audioWorklet.addModule("worklet.js").then(() => {
                 const microphone = audioContext.createMediaStreamSource(stream);
                 setupAudioGraph(microphone);
                 console.log("microphone init ok!")
@@ -171,13 +203,13 @@ function toggleFullScreen() {
 
 function fillDemoBuffer(buf, offset = 0, scale = 1.0) {
     let millis = new Date().valueOf();
-    for (let i = 0; i < fftSize * 2; i++) {
+    for (let i = 0; i < samplesPerFullCircle; i++) {
         buf[i] = Math.sin(millis + i / 10 + offset) * scale;
     }
 }
 
-const bufA = new Float32Array(fftSize * 2);
-const bufB = new Float32Array(fftSize * 2);
+const bufA = new Float32Array(samplesPerFullCircle);
+const bufB = new Float32Array(samplesPerFullCircle);
 function attractMode() {
     if (!run) {
         fillDemoBuffer(bufA);

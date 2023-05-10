@@ -86,7 +86,13 @@ function setupAudioGraph(micStream) {
     setupReceive();
 
     run = true;
-
+    return {
+        gainValue: globalGain.gain,
+        bassGainValue: bassGainNode.gain,
+        bassLpfFreq: lpf.frequency,
+        midLpfFreq: midLpf.frequency,
+        midHpfFreq: midHpf.frequency,
+    }
 };
 
 // Set up receiving Float32Array buffers from the worklet
@@ -188,7 +194,8 @@ function startCapturing() {
             audioContext = new AudioContext();
             audioContext.audioWorklet.addModule("worklet.js").then(() => {
                 const microphone = audioContext.createMediaStreamSource(stream);
-                setupAudioGraph(microphone);
+                const params = setupAudioGraph(microphone);
+                setupKnobs(params);
                 console.log("microphone init ok!")
                 run = true;
                 drawLoop();
@@ -229,6 +236,20 @@ function attractMode() {
         draw(bufA, bufB);
         requestAnimationFrame(attractMode);
     }
+}
+
+function setupKnobs(params) {
+    function handleValue(param, knobName) {
+        const knob = document.querySelector(`input[name=${knobName}]`);
+        const valueOut = document.querySelector(`output#${knobName}Current`)
+        knob.addEventListener("input", (e) => {
+            param.setValueAtTime(e.target.value, audioContext.currentTime);
+            valueOut.textContent = e.target.value;
+        });
+    }
+    
+    handleValue(params.gainValue, "gainValue");
+
 }
 
 

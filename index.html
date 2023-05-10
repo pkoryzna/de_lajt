@@ -16,11 +16,25 @@
             height: 100%;
             display: block;
         }
+
+        form#knobs{
+            font-family: 'Courier New', Courier, monospace;
+            color: white;
+            position: absolute;
+            right: 0;
+            top: 10%;
+        }
     </style>
 </head>
 
 <body style="background: #000;">
     <canvas></canvas>
+    <form id="knobs">
+        <p>Click to start. Double-click for fullscreen (hides knobs)</p>
+        <label for="gainValue">Global gain</label>
+        <input type="range" min="0" max="15" step="0.05" value="5.0" name="gainValue">
+        <output id="gainValueCurrent"></output>
+    </form>
     <script src="light.js"></script>
 </body>
 

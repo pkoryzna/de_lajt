@@ -23,8 +23,8 @@ idk what else, for details read the code i guess lol
 ## todos :)
 
 - add knobs for filter cutoffs, colors, samples per full rotation
-- make the persistence-of-vision simulation blank the screen at a fixed interval (there's no fixed buffer size rendered every frame atm)
-- for the above actually properly track what % of the full circle it's drawn (kinda broken rn)
+- ~~make the persistence-of-vision simulation blank the screen at a fixed interval (there's no fixed buffer size rendered every frame atm)~~
+- ~~for the above actually properly track what % of the full circle it's drawn (kinda broken rn)~~
 - add playing of arbitrary media (files or streams) so you can put this on a TV or something
 - make the attract mode prettier lol
 - try and do something about bass and midrange buffers getting slightly out of sync between callbacks (2 inputs 2 buffers in 1 worklet maybe?)

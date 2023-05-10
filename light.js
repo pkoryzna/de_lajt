@@ -5,7 +5,7 @@ const samplesPerFullCircle = 2048;
 const bassGainVal = 0.8;
 const ledCount = 60;
 const centerSize = 0.1; //percent of the radius
-const blankingFactor = 0.1 / (2048.0 / samplesPerFullCircle);
+const blankingFactor = 0.399;
 
 const sliceWidth = (Math.PI * 2) / samplesPerFullCircle;
 const gapWidth = sliceWidth * 0.1;
@@ -33,7 +33,10 @@ const audioConstraints = {
 // nice globals bro lmao
 var run = false;
 var radius = Math.min(canvas.height, canvas.width) / 2; // px
-var samplesDrawn = 0;
+var samplesDrawn = [
+    0,
+    samplesPerFullCircle / 2 // + 180 deg
+];
 
 /** @type {AudioContext} */
 var audioContext;
@@ -73,7 +76,7 @@ function setupAudioGraph(micStream) {
     const midBandFilter = midHpf.connect(midLpf);
 
     micStream.connect(globalGain);
-    globalGain.gain.setValueAtTime(8.0, audioContext.currentTime);
+    globalGain.gain.setValueAtTime(5.0, audioContext.currentTime);
 
     bassGainNode.gain.setValueAtTime(bassGainVal, audioContext.currentTime);
 
@@ -123,14 +126,19 @@ function drawLoop() {
 
 
 function fakeLedDrawBuffer(ctx, buf, quantize) {
+    ctx.globalAlpha = 0.8;
     ctx.lineCap = "round";
-    // todo fix samplesDrawn 
+    ctx.globalCompositeOperation = "screen";
+    ctx.lineWidth = radius * 0.009;
+
+    // fixme clean this up
+    const counterIdx = buf === midSpectrumBuf ? 0 : 1;
     for (var sampleIdx = 0; sampleIdx < buf.length; sampleIdx++) {
         const normalizedValue = buf[sampleIdx];
         ctx.beginPath();
         radius = Math.min(canvas.height, canvas.width) / 2; // px
 
-        const startAngle = sliceWidth * samplesDrawn - sliceWidth / 2;
+        const startAngle = sliceWidth * samplesDrawn[counterIdx] - sliceWidth / 2;
 
         const endAngle = startAngle + sliceWidth;
 
@@ -144,29 +152,33 @@ function fakeLedDrawBuffer(ctx, buf, quantize) {
         ctx.arc(canvas.width / 2, canvas.height / 2, arcRadius, startAngle + gapWidth, endAngle - gapWidth);
         ctx.stroke();
         ctx.closePath();
-        
-        samplesDrawn++;
-        samplesDrawn %= samplesPerFullCircle;
+
+        samplesDrawn[counterIdx]++;
+        samplesDrawn[counterIdx] %= samplesPerFullCircle;
     }
 }
 
+
+function blankCanvas() {
+    canvasCtx.fillStyle = "#000";
+    canvasCtx.globalAlpha = blankingFactor;
+    canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+}
 
 function draw(midBuf, bassBuf) {
     const ctx = canvasCtx;
     const quantize = true;
 
-    ctx.fillStyle = "#000";
-    ctx.globalAlpha = blankingFactor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-
-    ctx.lineWidth = radius * 0.009;
-    ctx.globalAlpha = 1.0;
     ctx.strokeStyle = midrangeStyle;
     fakeLedDrawBuffer(ctx, midBuf, quantize);
-    ctx.globalAlpha = 0.8;
     ctx.strokeStyle = bassStyle;
     fakeLedDrawBuffer(ctx, bassBuf, quantize);
+
+    // ugly hack: blank only on midSpectrumBuf sample count
+    if (samplesDrawn[0] == 0) {
+        ctx.globalCompositeOperation = "darken";
+        blankCanvas();
+    }
 }
 
 

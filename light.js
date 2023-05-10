@@ -5,7 +5,7 @@ const samplesPerFullCircle = 2048;
 const bassGainVal = 0.8;
 const ledCount = 60;
 const centerSize = 0.1; //percent of the radius
-const blankingFactor = 0.399;
+var blankingFactor = 0.399;
 
 const sliceWidth = (Math.PI * 2) / samplesPerFullCircle;
 const gapWidth = sliceWidth * 0.1;
@@ -239,16 +239,29 @@ function attractMode() {
 }
 
 function setupKnobs(params) {
-    function handleValue(param, knobName) {
+    function handleAudioParam(paramName) {
+        const param = params[paramName];
+        const knobName = paramName;
         const knob = document.querySelector(`input[name=${knobName}]`);
-        const valueOut = document.querySelector(`output#${knobName}Current`)
+        const valueOut = document.querySelector(`output#${knobName}Current`);
         knob.addEventListener("input", (e) => {
             param.setValueAtTime(e.target.value, audioContext.currentTime);
             valueOut.textContent = e.target.value;
         });
     }
-    
-    handleValue(params.gainValue, "gainValue");
+
+    handleAudioParam("gainValue");
+    handleAudioParam("bassGainValue");
+    handleAudioParam("bassLpfFreq");
+    handleAudioParam("midLpfFreq");
+    handleAudioParam("midHpfFreq");
+
+    const blankingFactorKnob = document.querySelector(`input[name=blankingFactor]`);
+    const blankingFactorKnobValueOut = document.querySelector(`output#blankingFactorCurrent`);
+    blankingFactorKnob.addEventListener("input", (e) => {
+        blankingFactor = e.target.value;
+        blankingFactorKnobValueOut.textContent = e.target.value;
+    });
 
 }
 

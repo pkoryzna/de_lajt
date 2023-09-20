@@ -1,18 +1,21 @@
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 
 // todo make this into config object
-const samplesPerFullCircle = 2048;
-const bassGainVal = 0.8;
+const samplesPerFullCircle = 1024;
+const defaultBassGainVal = 0.8;
 const ledCount = 60;
 const centerSize = 0.1; //percent of the radius
-var blankingFactor = 0.399;
+var blankingFactor = 0.4;
+
+const defaultMidHpfFreq = 400;
+const defaultMidLpfFreq = 1200;
 
 const sliceWidth = (Math.PI * 2) / samplesPerFullCircle;
 const gapWidth = sliceWidth * 0.1;
 
 
-const bassStyle = "#f00";
-const midrangeStyle = "#0f0";
+const bassStyle = "#ff0000";
+const midrangeStyle = "#00ff00";
 
 
 const canvas = document.querySelector('canvas');
@@ -56,21 +59,21 @@ function setupAudioGraph(micStream) {
     const lpf = new BiquadFilterNode(audioContext, {
         "type": "lowpass",
         "frequency": 100, // Hz
-        "Q": 5.0,
+        "Q": 2.0,
     });
 
 
     const midHpf = new BiquadFilterNode(audioContext,
         {
             "type": "highpass",
-            "frequency": 400, //Hz
+            "frequency": defaultMidHpfFreq, //Hz
             "Q": 1.0,
         });
 
     const midLpf = new BiquadFilterNode(audioContext,
         {
             "type": "lowpass",
-            "frequency": 1500, //Hz
+            "frequency": defaultMidLpfFreq, //Hz
             "Q": 1.0,
         });
     const midBandFilter = midHpf.connect(midLpf);
@@ -78,7 +81,7 @@ function setupAudioGraph(micStream) {
     micStream.connect(globalGain);
     globalGain.gain.setValueAtTime(5.0, audioContext.currentTime);
 
-    bassGainNode.gain.setValueAtTime(bassGainVal, audioContext.currentTime);
+    bassGainNode.gain.setValueAtTime(defaultBassGainVal, audioContext.currentTime);
 
     globalGain.connect(lpf).connect(bassGainNode).connect(bassBufferNode);
     globalGain.connect(midBandFilter).connect(midBufferNode);
@@ -87,11 +90,11 @@ function setupAudioGraph(micStream) {
 
     run = true;
     return {
-        gainValue: globalGain.gain,
-        bassGainValue: bassGainNode.gain,
-        bassLpfFreq: lpf.frequency,
-        midLpfFreq: midLpf.frequency,
-        midHpfFreq: midHpf.frequency,
+        "Input Gain": { param: globalGain.gain, min: 0.1, max: 5, step: 0.05, initialValue: globalGain.gain.value },
+        "Bass Gain": { param: bassGainNode.gain, min: 0, max: 15, step: 0.05, initialValue: bassGainNode.gain.value },
+        "Bass LPF Freq": { param: lpf.frequency, min: 0, max: 500, step: 5, initialValue: lpf.frequency.value },
+        "Midrange LPF Freq (high)": { param: midLpf.frequency, min: 200, max: 4000, step: 50, initialValue: midLpf.frequency.value },
+        "Midrange HPF Freq (low)": { param: midHpf.frequency, min: 200, max: 4000, step: 50, initialValue: defaultMidHpfFreq },
     }
 };
 
@@ -115,7 +118,6 @@ function setupReceive() {
 }
 
 function drawLoop() {
-
     if (midSpectrumBuf && bassSpectrumBuf) {
         draw(midSpectrumBuf, bassSpectrumBuf);
         if (midSpectrumBuf.length != bassSpectrumBuf.length) {
@@ -134,7 +136,6 @@ function drawLoop() {
 function fakeLedDrawBuffer(ctx, buf, quantize) {
     ctx.globalAlpha = 0.8;
     ctx.lineCap = "round";
-    ctx.globalCompositeOperation = "screen";
     ctx.lineWidth = radius * 0.009;
 
     // fixme clean this up
@@ -182,7 +183,6 @@ function draw(midBuf, bassBuf) {
 
     // ugly hack: blank only on midSpectrumBuf sample count
     if (samplesDrawn[0] == 0) {
-        ctx.globalCompositeOperation = "darken";
         blankCanvas();
     }
 }
@@ -195,7 +195,7 @@ function startCapturing() {
             audioContext.audioWorklet.addModule("worklet.js").then(() => {
                 const microphone = audioContext.createMediaStreamSource(stream);
                 const params = setupAudioGraph(microphone);
-                setupKnobs(params);
+                setupKnobs(params, document.getElementById("knobs"));
                 console.log("microphone init ok!")
                 run = true;
                 drawLoop();
@@ -238,30 +238,88 @@ function attractMode() {
     }
 }
 
-function setupKnobs(params) {
-    function handleAudioParam(paramName) {
-        const param = params[paramName];
-        const knobName = paramName;
-        const knob = document.querySelector(`input[name=${knobName}]`);
-        const valueOut = document.querySelector(`output#${knobName}Current`);
-        knob.addEventListener("input", (e) => {
-            param.setValueAtTime(e.target.value, audioContext.currentTime);
-            valueOut.textContent = e.target.value;
-        });
+function clamp(val, min, max) {
+    if (isNaN(parseInt(val))) return min;
+    const lower = Math.max(min, val);
+    const upper = Math.min(lower, max);
+    return upper;
+}
+
+function createKnob(name, desc, min, max, initialValue, step, inputHandler) {
+    const slider = document.createElement("input");
+    slider.setAttribute("type", "range");
+    slider.setAttribute("min", min);
+    slider.setAttribute("max", max);
+    slider.setAttribute("step", step);
+    slider.value = String(initialValue);
+
+
+    const labelElem = document.createElement("label");
+    labelElem.setAttribute("for", slider.name);
+    labelElem.appendChild(document.createTextNode(desc));
+
+    const valueTextInput = document.createElement("input");
+    valueTextInput.setAttribute("type", "text");
+    valueTextInput.value = initialValue;
+
+    // the text box is the golden source for the data
+    valueTextInput.setAttribute("name", name);
+
+    valueTextInput.addEventListener("change", e => {
+        console.log(e)
+        slider.value = clamp(e.target.value, min, max);
+        inputHandler(e);
+    });
+
+    slider.addEventListener("input", e => {
+        console.log(e)
+        valueTextInput.value = clamp(e.target.value, min, max);
+        inputHandler(e);
+    });
+
+    const container = document.createElement("div");
+    container.setAttribute("id", `container-${name}`);
+    container.appendChild(labelElem);
+    container.appendChild(slider);
+    container.appendChild(valueTextInput);
+
+    return { container: container, textInputElement: valueTextInput };
+
+}
+
+function setupKnobs(params, targetForm) {
+    for (const [key, param] of Object.entries(params)) {
+        const { container, } = createKnob(
+            key,
+            key,
+            param.min,
+            param.max,
+            param.initialValue,
+            param.step,
+            e => param.param.setValueAtTime(clamp(e.target.value, param.min, param.max), audioContext.currentTime)
+        );
+
+        targetForm.appendChild(container);
+    }
+    const blanking = {
+        name: "blankingFactor",
+        description: "Blanking factor",
+        min: 0.01,
+        max: 1.0,
+        initialValue: blankingFactor,
+        step: 0.05,
     }
 
-    handleAudioParam("gainValue");
-    handleAudioParam("bassGainValue");
-    handleAudioParam("bassLpfFreq");
-    handleAudioParam("midLpfFreq");
-    handleAudioParam("midHpfFreq");
-
-    const blankingFactorKnob = document.querySelector(`input[name=blankingFactor]`);
-    const blankingFactorKnobValueOut = document.querySelector(`output#blankingFactorCurrent`);
-    blankingFactorKnob.addEventListener("input", (e) => {
-        blankingFactor = e.target.value;
-        blankingFactorKnobValueOut.textContent = e.target.value;
-    });
+    const { container, } = createKnob(
+        blanking.name,
+        blanking.description,
+        blanking.min,
+        blanking.max,
+        blanking.initialValue,
+        blanking.step,
+        (e) => { blankingFactor = clamp(parseFloat(e.target.value), blanking.min, blanking.max) }
+    );
+    targetForm.appendChild(container);
 
 }
 

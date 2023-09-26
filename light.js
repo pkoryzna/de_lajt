@@ -56,11 +56,12 @@ function setupAudioGraph(micStream) {
     const bassGainNode = new GainNode(audioContext);
     const globalGain = new GainNode(audioContext);
 
-    const lpf = new BiquadFilterNode(audioContext, {
-        "type": "lowpass",
-        "frequency": 100, // Hz
-        "Q": 2.0,
-    });
+    const lpf = new BiquadFilterNode(audioContext,
+        {
+            "type": "lowpass",
+            "frequency": 100, // Hz
+            "Q": 2.0,
+        });
 
 
     const midHpf = new BiquadFilterNode(audioContext,
